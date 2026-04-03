@@ -18,7 +18,7 @@ env:
 # JOB 1 — Build & Test (native, fast feedback)
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
- build-and-test:
+  build-and-test:
     name: "Build & Test (Ubuntu)"
     runs-on: ubuntu-latest
     permissions:
