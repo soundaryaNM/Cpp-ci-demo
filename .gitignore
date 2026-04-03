@@ -1,0 +1,9 @@
+build/
+build-cov/
+build-rel/
+coverage-report/
+.cache/
+*.o
+*.a
+*.so
+*.exe

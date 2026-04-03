@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+
+  # ── Build & run all tests ─────────────────────────────────────
+  test:
+    build:
+      context: .
+      target: builder
+    image: cpp-ci-demo:latest
+    container_name: cpp-ci-test
+    volumes:
+      # Mount build output so XML is accessible on host
+      - ./build:/app/build
+    command: >
+      sh -c "
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja &&
+        cmake --build build --parallel &&
+        cd build && ./run_tests --gtest_output=xml:test_results.xml
+      "
+
+  # ── Coverage report (HTML) ────────────────────────────────────
+  coverage:
+    build:
+      context: .
+      target: builder
+    container_name: cpp-ci-coverage
+    volumes:
+      - ./build:/app/build
+      - ./coverage-report:/app/coverage-report
+    command: >
+      sh -c "
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja &&
+        cmake --build build --parallel &&
+        cd build && ./run_tests &&
+        gcovr --root .. --html-details ../coverage-report/index.html
+          --xml ../coverage-report/coverage.xml
+          --print-summary
+      "

@@ -1,0 +1,9 @@
+build/
+build-cov/
+.git/
+.github/
+.vscode/
+coverage-report/
+*.md
+docs/
+scripts/

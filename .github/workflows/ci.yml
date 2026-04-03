@@ -1,0 +1,255 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║        GitHub Actions CI/CD Pipeline for C++ Calculator         ║
+# ╚══════════════════════════════════════════════════════════════════╝
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, "feature/**" ]
+    tags:     [ "v*.*.*" ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  REGISTRY:    ghcr.io
+  IMAGE_NAME:  ${{ github.repository }}   # e.g. yourname/cpp-ci-demo
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 1 — Build & Test (native, fast feedback)
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  build-and-test:
+    name: "Build & Test (Ubuntu)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc g++ gcovr lcov
+
+      - name: Configure (Release + tests)
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTS=ON \
+            -G Ninja
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        run: |
+          cd build
+          ctest --output-on-failure \
+            --output-junit test-results/junit-results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: build/test-results/
+
+      - name: Publish Test Report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: "GTest Results"
+          path: "build/test-results/*.xml"
+          reporter: java-junit
+          fail-on-error: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 2 — Code Coverage
+# ─────────────────────────────────────────────────────────────────────────────
+  coverage:
+    name: "Code Coverage"
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc g++ gcovr lcov
+
+      - name: Configure (Debug + coverage)
+        run: |
+          cmake -B build-cov \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTS=ON \
+            -DBUILD_COVERAGE=ON \
+            -G Ninja
+
+      - name: Build with coverage
+        run: cmake --build build-cov --parallel
+
+      - name: Run tests
+        run: cd build-cov && ctest --output-on-failure || true
+
+      - name: Generate coverage report
+        run: |
+          gcovr \
+            --root . \
+            --filter src/ --filter include/ \
+            --html-details coverage-report/index.html \
+            --xml coverage-report/coverage.xml \
+            --txt \
+            build-cov/
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-report/
+
+      - name: Coverage summary
+        run: gcovr --root . --filter src/ --filter include/ build-cov/ --txt
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 3 — Multi-platform build matrix
+# ─────────────────────────────────────────────────────────────────────────────
+  multi-platform:
+    name: "Build (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    needs: build-and-test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        build_type: [Release]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Install deps (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install cmake ninja
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DBUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel
+
+      - name: Test
+        run: cd build && ctest -C ${{ matrix.build_type }} --output-on-failure
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 4 — Docker build + push to GHCR
+# ─────────────────────────────────────────────────────────────────────────────
+  docker:
+    name: "Docker Build & Push"
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    permissions:
+      contents: read
+      packages: write      # needed to push to GHCR
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: runtime          # only push the slim runtime stage
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 5 — Release artifacts (runs only on version tags: v*)
+# ─────────────────────────────────────────────────────────────────────────────
+  release:
+    name: "Create Release"
+    runs-on: ubuntu-latest
+    needs: [build-and-test, docker]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write   # needed to create releases
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build gcc g++
+
+      - name: Build release binary
+        run: |
+          cmake -B build-rel \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTS=OFF \
+            -G Ninja
+          cmake --build build-rel --parallel
+          # Package into a tarball
+          mkdir -p release-assets
+          cp build-rel/bin/calculator_app release-assets/calculator-linux-x86_64
+          tar -czf release-assets/calculator-linux-x86_64.tar.gz \
+              -C build-rel/bin calculator_app
+          sha256sum release-assets/calculator-linux-x86_64.tar.gz \
+              > release-assets/SHA256SUMS.txt
+
+      - name: Download test results artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results
+          path: release-assets/test-results
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Release ${{ github.ref_name }}"
+          body: |
+            ## What's in this release
+            - Compiled binary for Linux x86_64
+            - Test results (JUnit XML)
+            - SHA256 checksums
+
+            ### Docker image
+            ```
+            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ```
+          files: |
+            release-assets/calculator-linux-x86_64.tar.gz
+            release-assets/SHA256SUMS.txt
+            release-assets/test-results/**
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
