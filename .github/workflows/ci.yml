@@ -43,7 +43,6 @@ jobs:
 
       - name: Run tests
         run: |
-          mkdir -p build/test-results
           cd build
           ctest --output-on-failure \
             --output-junit test-results/junit-results.xml
@@ -62,7 +61,7 @@ jobs:
           name: "GTest Results"
           path: "build/test-results/*.xml"
           reporter: java-junit
-         fail-on-error: false
+          fail-on-error: false
 
 # ─────────────────────────────────────────────────────────────────────────────
 # JOB 2 — Code Coverage
