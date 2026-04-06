@@ -1,7 +1,5 @@
 # C++ Calculator — CI/CD Demo
 
-<!-- REPLACE soundaryaNM/cpp-ci-demo with your actual GitHub username/repo -->
-
 [![CI/CD Pipeline](https://github.com/soundaryaNM/cpp-ci-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/soundaryaNM/cpp-ci-demo/actions/workflows/ci.yml)
 [![Build Status](https://github.com/soundaryaNM/cpp-ci-demo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/soundaryaNM/cpp-ci-demo/actions/workflows/ci.yml)
 [![Docker Image](https://ghcr.io/soundaryaNM/cpp-ci-demo/cpp-calculator)](https://github.com/soundaryaNM/cpp-ci-demo/pkgs/container/cpp-ci-demo)
