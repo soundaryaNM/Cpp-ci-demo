@@ -1,0 +1,14 @@
+# Python dependencies for the C++ test generation framework
+# Install with: pip install -r python_framework/requirements.txt
+
+# XML parsing (built into Python stdlib — listed for documentation)
+# xml.etree.ElementTree  <- stdlib, no install needed
+
+# For richer test output formatting (optional, stdlib fallback exists)
+colorama>=0.4.6       # cross-platform terminal colours (Windows fix)
+
+# For future extension: AI-assisted test generation
+# openai>=1.0.0        # uncomment if you add AI-powered generation
+
+# Dev / linting
+pytest>=7.4.0         # used to test the generator script itself

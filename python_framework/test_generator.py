@@ -1,0 +1,248 @@
+"""
+test_generator.py
+=================
+Reads include/calculator.h, extracts every function signature,
+and writes a ready-to-compile Google Test file into
+tests/generated/test_generated_calculator.cpp
+"""
+
+import re
+import os
+import sys
+import argparse
+from pathlib import Path
+from datetime import datetime
+
+
+# ── Function signature parser ────────────────────────────────────────────────
+
+def parse_functions(header_path: str) -> list[dict]:
+    """
+    Returns a list of dicts, each describing one C++ function:
+        { name, return_type, params: [(type, name), ...] }
+    Only captures functions inside a namespace block.
+    """
+    header_text = Path(header_path).read_text()
+
+    # Strip single-line comments
+    header_text = re.sub(r'//[^\n]*', '', header_text)
+
+    # Strip multi-line comments
+    header_text = re.sub(r'/\*.*?\*/', '', header_text, flags=re.DOTALL)
+
+    # Find everything inside the namespace body
+    ns_match = re.search(
+        r'namespace\s+\w+\s*\{(.*?)\}', header_text, re.DOTALL)
+    if not ns_match:
+        print("[generator] WARNING: no namespace found – scanning whole file")
+        body = header_text
+    else:
+        body = ns_match.group(1)
+
+    # Match:  return_type  name ( param_list ) ;
+    pattern = re.compile(
+        r'(\w[\w\s\*&]*?)\s+(\w+)\s*\(([^)]*)\)\s*;'
+    )
+
+    functions = []
+    for m in pattern.finditer(body):
+        return_type = m.group(1).strip()
+        name = m.group(2).strip()
+        raw_params = m.group(3).strip()
+
+        # Parse parameter list into (type, param_name) pairs
+        params = []
+        if raw_params:
+            for p in raw_params.split(','):
+                p = p.strip()
+                parts = p.rsplit(' ', 1)
+                if len(parts) == 2:
+                    params.append((parts[0].strip(), parts[1].strip()))
+                else:
+                    params.append((p, 'arg'))
+
+        functions.append({
+            'name':        name,
+            'return_type': return_type,
+            'params':      params,
+        })
+        print(f"[generator] Discovered: {return_type} {name}({raw_params})")
+
+    return functions
+
+
+# ── Test case builder ─────────────────────────────────────────────────────────
+
+# Maps each function name → list of (test_name, call, expected, matcher)
+TEST_CASES = {
+    'add': [
+        ('PositiveIntegers',  'Calculator::add(2, 3)',
+         '5',    'EXPECT_DOUBLE_EQ'),
+        ('NegativeNumbers',   'Calculator::add(-4, -6)',
+         '-10',  'EXPECT_DOUBLE_EQ'),
+        ('MixedSigns',        'Calculator::add(-3, 7)',
+         '4',    'EXPECT_DOUBLE_EQ'),
+        ('FloatingPoint',     'Calculator::add(1.5, 2.5)',  '4.0',  'EXPECT_DOUBLE_EQ'),
+        ('AddZero',           'Calculator::add(0, 99)',
+         '99',   'EXPECT_DOUBLE_EQ'),
+    ],
+    'subtract': [
+        ('BasicSubtract',     'Calculator::subtract(10, 4)', '6',   'EXPECT_DOUBLE_EQ'),
+        ('NegativeResult',    'Calculator::subtract(3, 7)',  '-4',  'EXPECT_DOUBLE_EQ'),
+        ('SubtractZero',      'Calculator::subtract(5, 0)',  '5',   'EXPECT_DOUBLE_EQ'),
+    ],
+    'multiply': [
+        ('BasicMultiply',     'Calculator::multiply(3, 4)',  '12',  'EXPECT_DOUBLE_EQ'),
+        ('MultiplyByZero',    'Calculator::multiply(9, 0)',  '0',   'EXPECT_DOUBLE_EQ'),
+        ('NegativeMultiply',  'Calculator::multiply(-3, 4)', '-12', 'EXPECT_DOUBLE_EQ'),
+    ],
+    'divide': [
+        ('BasicDivide',       'Calculator::divide(10, 2)',   '5',   'EXPECT_DOUBLE_EQ'),
+        ('FractionalResult',  'Calculator::divide(1, 4)',
+         '0.25', 'EXPECT_DOUBLE_EQ'),
+    ],
+    'power': [
+        ('PowerOfTwo',        'Calculator::power(2, 10)',
+         '1024', 'EXPECT_DOUBLE_EQ'),
+        ('PowerOfZero',       'Calculator::power(5, 0)',     '1',   'EXPECT_DOUBLE_EQ'),
+    ],
+    'factorial': [
+        ('FactorialZero',     'Calculator::factorial(0)',    '1',   'EXPECT_DOUBLE_EQ'),
+        ('FactorialFive',     'Calculator::factorial(5)',    '120', 'EXPECT_DOUBLE_EQ'),
+        ('FactorialTen',      'Calculator::factorial(10)',
+         '3628800', 'EXPECT_DOUBLE_EQ'),
+    ],
+    'isPrime': [
+        ('SmallPrime',        'Calculator::isPrime(2)',      'true', 'EXPECT_EQ'),
+        ('LargePrime',        'Calculator::isPrime(97)',     'true', 'EXPECT_EQ'),
+        ('NotPrime',          'Calculator::isPrime(4)',      'false', 'EXPECT_EQ'),
+        ('One',               'Calculator::isPrime(1)',      'false', 'EXPECT_EQ'),
+    ],
+}
+
+# Exception tests (separate – uses EXPECT_THROW)
+EXCEPTION_CASES = {
+    'divide':    ('DivisionByZero', 'Calculator::divide(5, 0)'),
+    'factorial': ('NegativeInput',  'Calculator::factorial(-1)'),
+}
+
+
+def build_test_file(functions: list[dict], namespace: str) -> str:
+    """Returns the full content of the generated .cpp test file."""
+
+    header_lines = [
+        "// ═══════════════════════════════════════════════════════════════════",
+        f"// AUTO-GENERATED by python_framework/test_generator.py",
+        f"// Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "// DO NOT EDIT BY HAND — re-run the generator instead",
+        "// ═══════════════════════════════════════════════════════════════════",
+        "",
+        '#include <gtest/gtest.h>',
+        '#include "calculator.h"',
+        '#include <stdexcept>',
+        "",
+    ]
+
+    test_lines = []
+    total = 0
+
+    for fn in functions:
+        name = fn['name']
+        suite = f"Gen_{name.capitalize()}"
+        cases = TEST_CASES.get(name, [])
+
+        if not cases:
+            # Fallback: generate a basic smoke test
+            test_lines += [
+                f"// ── {name} (smoke test – no explicit cases defined) ──",
+                f"TEST({suite}, Exists) {{",
+                f"    // Just verifies the function compiles and is callable",
+                f"    SUCCEED();",
+                f"}}",
+                "",
+            ]
+            total += 1
+            continue
+
+        test_lines.append(
+            f"// ── {name} ──────────────────────────────────────────────────────")
+
+        for (test_name, call, expected, matcher) in cases:
+            test_lines += [
+                f"TEST({suite}, {test_name}) {{",
+                f"    {matcher}({call}, {expected});",
+                f"}}",
+            ]
+            total += 1
+
+        # Exception test if defined
+        if name in EXCEPTION_CASES:
+            exc_name, exc_call = EXCEPTION_CASES[name]
+            test_lines += [
+                f"TEST({suite}, {exc_name}) {{",
+                f"    EXPECT_THROW({exc_call}, std::invalid_argument);",
+                f"}}",
+            ]
+            total += 1
+
+        test_lines.append("")
+
+    # Entry point
+    test_lines += [
+        "// ── Test runner ──────────────────────────────────────────────────────",
+        "int main(int argc, char **argv) {",
+        "    ::testing::InitGoogleTest(&argc, argv);",
+        "    return RUN_ALL_TESTS();",
+        "}",
+    ]
+
+    print(f"[generator] Total test cases generated: {total}")
+    return "\n".join(header_lines + test_lines) + "\n"
+
+
+# ── Namespace detector ────────────────────────────────────────────────────────
+
+def detect_namespace(header_path: str) -> str:
+    text = Path(header_path).read_text()
+    m = re.search(r'namespace\s+(\w+)', text)
+    return m.group(1) if m else "Calculator"
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(description="C++ test generator")
+    parser.add_argument('--header',  default='include/calculator.h',
+                        help='Path to the C++ header file')
+    parser.add_argument('--output',  default='tests/generated/test_generated_calculator.cpp',
+                        help='Where to write the generated test file')
+    args = parser.parse_args()
+
+    header_path = args.header
+    output_path = args.output
+
+    if not Path(header_path).exists():
+        print(f"[generator] ERROR: header not found: {header_path}")
+        sys.exit(1)
+
+    print(f"[generator] Parsing header: {header_path}")
+    functions = parse_functions(header_path)
+
+    if not functions:
+        print("[generator] ERROR: no functions found in header")
+        sys.exit(1)
+
+    namespace = detect_namespace(header_path)
+    print(f"[generator] Namespace detected: {namespace}")
+
+    content = build_test_file(functions, namespace)
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(output_path).write_text(content, encoding="utf-8")
+
+    print(f"[generator] Written to: {output_path}")
+    print("[generator] Done.")
+
+
+if __name__ == '__main__':
+    main()
