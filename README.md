@@ -1,15 +1,16 @@
 # C++ Calculator — CI/CD Demo
 
-<!-- REPLACE yourname/cpp-ci-demo with your actual GitHub username/repo -->
+<!-- REPLACE soundaryaNM/cpp-ci-demo with your actual GitHub username/repo -->
 
-[![CI/CD Pipeline](https://github.com/yourname/cpp-ci-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/yourname/cpp-ci-demo/actions/workflows/ci.yml)
-[![Build Status](https://github.com/yourname/cpp-ci-demo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yourname/cpp-ci-demo/actions/workflows/ci.yml)
-[![Docker Image](https://ghcr.io/yourname/cpp-ci-demo/cpp-calculator)](https://github.com/yourname/cpp-ci-demo/pkgs/container/cpp-ci-demo)
+[![CI/CD Pipeline](https://github.com/soundaryaNM/cpp-ci-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/soundaryaNM/cpp-ci-demo/actions/workflows/ci.yml)
+[![Build Status](https://github.com/soundaryaNM/cpp-ci-demo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/soundaryaNM/cpp-ci-demo/actions/workflows/ci.yml)
+[![Docker Image](https://ghcr.io/soundaryaNM/cpp-ci-demo/cpp-calculator)](https://github.com/soundaryaNM/cpp-ci-demo/pkgs/container/cpp-ci-demo)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.cppreference.com/w/cpp/17)
 [![CMake](https://img.shields.io/badge/CMake-3.16+-green.svg)](https://cmake.org)
 
 A demonstration project showing a **complete C++ CI/CD pipeline** using:
+
 - 🔨 CMake + Ninja build system
 - 🧪 Google Test framework
 - 🐳 Docker (multi-stage builds)
@@ -44,15 +45,17 @@ cpp-ci-demo/
 ## Quick Start (Local)
 
 ### Prerequisites
+
 - CMake ≥ 3.16
 - GCC ≥ 9 or Clang ≥ 10
 - Ninja (`sudo apt install ninja-build`)
 - Git (for FetchContent to download GoogleTest)
 
 ### Build & Test
+
 ```bash
 # Clone
-git clone https://github.com/yourname/cpp-ci-demo.git
+git clone https://github.com/soundaryaNM/cpp-ci-demo.git
 cd cpp-ci-demo
 
 # Build + run tests (one command)
@@ -65,11 +68,13 @@ cd build && ctest --output-on-failure
 ```
 
 ### Run the app
+
 ```bash
 ./build/bin/calculator_app
 ```
 
 ### Coverage report
+
 ```bash
 ./scripts/build.sh coverage
 # Open coverage-report/index.html in your browser
@@ -80,6 +85,7 @@ cd build && ctest --output-on-failure
 ## Docker
 
 ### Build locally
+
 ```bash
 # Production runtime image
 docker build --target runtime -t cpp-calculator:local .
@@ -89,9 +95,10 @@ docker run --rm cpp-calculator:local
 ```
 
 ### Pull from GitHub Container Registry
+
 ```bash
-docker pull ghcr.io/yourname/cpp-ci-demo:main
-docker run --rm ghcr.io/yourname/cpp-ci-demo:main
+docker pull ghcr.io/soundaryaNM/cpp-ci-demo:main
+docker run --rm ghcr.io/soundaryaNM/cpp-ci-demo:main
 ```
 
 ---
@@ -109,6 +116,7 @@ The pipeline has **5 jobs** that run automatically on every push:
 | `release` | On `v*` tags only | Packages binary, creates GitHub Release |
 
 ### Trigger a release
+
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
@@ -127,4 +135,5 @@ git push origin v1.0.0
 ---
 
 ## License
+
 MIT — see [LICENSE](LICENSE)
