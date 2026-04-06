@@ -9,15 +9,6 @@
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.cppreference.com/w/cpp/17)
 [![CMake](https://img.shields.io/badge/CMake-3.16+-green.svg)](https://cmake.org)
 
-A demonstration project showing a **complete C++ CI/CD pipeline** using:
-
-- 🔨 CMake + Ninja build system
-- 🧪 Google Test framework
-- 🐳 Docker (multi-stage builds)
-- ⚙️ GitHub Actions (build → test → coverage → Docker → release)
-- 📊 Code coverage with gcovr
-
----
 
 ## Project Structure
 
